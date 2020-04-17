@@ -1,14 +1,16 @@
-## dfuse Metrics Library
+# dfuse Metrics Library
+[![reference](https://img.shields.io/badge/godoc-reference-5272B4.svg?style=flat-square)](https://pkg.go.dev/github.com/dfuse-io/dmetrics)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 For now, this library contains simple wrapping structure around Prometheus
 metrics. This improves usage and developer experience of defining metrics
 for dfuse services.
+It is part of **[dfuse](https://github.com/dfuse-io/dfuse)**.
 
-Please keep this library as SMALL as possible, as it is a dependency
+This library should be kept as SMALL as possible, as it is a dependency
 we want to sprinkle around widely.
 
-
-### Usage
+## Usage
 
 All metrics must be created from a metrics _Set_. The idea is that each
 library and micro-services defines a single set of metrics.
@@ -42,10 +44,9 @@ func init() {
 ```
 
 
+## Background
 
-### Background
-
-Initially, we had define our metrics directly as the Prometheus type giving
+Initially, we had defined our metrics directly as the Prometheus type giving
 a definition of metrics in the form:
 
 ```go
@@ -98,3 +99,20 @@ And the usage is now like:
 ```
 
 An incredible improvement in the definitions of the metrics themselves.
+
+
+## Contributing
+
+**Issues and PR in this repo related strictly to the dmetrics library.**
+
+Report any protocol-specific issues in their
+[respective repositories](https://github.com/dfuse-io/dfuse#protocols)
+
+**Please first refer to the general
+[dfuse contribution guide](https://github.com/dfuse-io/dfuse/blob/master/CONTRIBUTING.md)**,
+if you wish to contribute to this code base.
+
+
+## License
+
+[Apache 2.0](LICENSE)
