@@ -53,22 +53,21 @@ func (s *Set) NewHeadTimeDrift(service string) *HeadTimeDrift {
 
 func (h *HeadTimeDrift) collector() prometheus.Collector { return headTimeDriftGauge }
 func (h *HeadTimeDrift) SetBlockTime(blockTime time.Time) {
-	h.headBlockTimeCh <- blockTime
-	if h.started.Load() {
-		return
-	}
-	go func() {
-		headBlockTime := time.Time{}
-		for {
-			select {
-			case blockTime := <-h.headBlockTimeCh:
-				headBlockTime = blockTime
-			case <-time.After(500 * time.Millisecond):
+	if !h.started.Load() {
+		go func() {
+			headBlockTime := time.Time{}
+			for {
+				select {
+				case blockTime := <-h.headBlockTimeCh:
+					headBlockTime = blockTime
+				case <-time.After(500 * time.Millisecond):
+				}
+				headTimeDriftGauge.WithLabelValues(h.service).Set(time.Since(headBlockTime).Seconds())
 			}
-			headTimeDriftGauge.WithLabelValues(h.service).Set(float64(time.Since(headBlockTime).Seconds()))
-		}
-	}()
-	h.started.Store(true)
+		}()
+		h.started.Store(true)
+	}
+	h.headBlockTimeCh <- blockTime
 }
 
 func (s *Set) NewHeadBlockNumber(service string) *HeadBlockNum {
