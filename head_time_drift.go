@@ -17,6 +17,8 @@ package dmetrics
 import (
 	"time"
 
+	"go.uber.org/atomic"
+
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -33,32 +35,41 @@ var headBlockNumber = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 
 type HeadTimeDrift struct {
 	headBlockTimeCh chan time.Time
+	service         string
+	started         *atomic.Bool
 }
 
 func (s *Set) NewHeadTimeDrift(service string) *HeadTimeDrift {
 	headBlockTimeCh := make(chan time.Time)
 
-	go func() {
-		headBlockTime := time.Time{}
-		for {
-			select {
-			case blockTime := <-headBlockTimeCh:
-				headBlockTime = blockTime
-			case <-time.After(500 * time.Millisecond):
-			}
-			headTimeDriftGauge.WithLabelValues(service).Set(float64(time.Since(headBlockTime).Seconds()))
-		}
-	}()
-
 	h := &HeadTimeDrift{
 		headBlockTimeCh: headBlockTimeCh,
+		service:         service,
+		started:         atomic.NewBool(false),
 	}
 
 	return h
 }
 
-func (h *HeadTimeDrift) collector() prometheus.Collector  { return headTimeDriftGauge }
-func (h *HeadTimeDrift) SetBlockTime(blockTime time.Time) { h.headBlockTimeCh <- blockTime }
+func (h *HeadTimeDrift) collector() prometheus.Collector { return headTimeDriftGauge }
+func (h *HeadTimeDrift) SetBlockTime(blockTime time.Time) {
+	h.headBlockTimeCh <- blockTime
+	if h.started.Load() {
+		return
+	}
+	go func() {
+		headBlockTime := time.Time{}
+		for {
+			select {
+			case blockTime := <-h.headBlockTimeCh:
+				headBlockTime = blockTime
+			case <-time.After(500 * time.Millisecond):
+			}
+			headTimeDriftGauge.WithLabelValues(h.service).Set(float64(time.Since(headBlockTime).Seconds()))
+		}
+	}()
+	h.started.Store(true)
+}
 
 func (s *Set) NewHeadBlockNumber(service string) *HeadBlockNum {
 	return &HeadBlockNum{
