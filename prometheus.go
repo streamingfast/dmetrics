@@ -44,8 +44,6 @@ type Option func(s *Set)
 
 // Register from `metrics.go`
 func Register(sets ...*Set) {
-	mutex.Lock()
-	defer mutex.Unlock()
 	for _, set := range sets {
 		set.Register()
 	}
@@ -77,6 +75,9 @@ func (s *Set) add(metric Metric) Metric {
 }
 
 func (s *Set) Register() {
+	mutex.Lock()
+	defer mutex.Unlock()
+
 	if s.isRegistered {
 		return
 	}
