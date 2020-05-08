@@ -18,10 +18,13 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+var mutex sync.Mutex
 
 var PrometheusRegister = prometheus.MustRegister
 
@@ -41,6 +44,8 @@ type Option func(s *Set)
 
 // Register from `metrics.go`
 func Register(sets ...*Set) {
+	mutex.Lock()
+	defer mutex.Unlock()
 	for _, set := range sets {
 		set.Register()
 	}
