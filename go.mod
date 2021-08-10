@@ -1,4 +1,4 @@
-module github.com/dfuse-io/dmetrics
+module github.com/streamingfast/dmetrics
 
 go 1.12
 
