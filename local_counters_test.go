@@ -20,7 +20,7 @@ func TestNewPerSecondLocalCounter(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, NewPerSecondLocalCounter(tt.args.unit))
+			assert.Equal(t, tt.want, NewPerSecondLocalRateCounter(tt.args.unit))
 		})
 	}
 }
@@ -34,35 +34,28 @@ func TestLocalCounter_String(t *testing.T) {
 	}{
 		{
 			"standard rate counter",
-			NewPerSecondLocalCounter("items"),
+			NewPerSecondLocalRateCounter("items"),
 			rateGenerator(1*time.Second, 10),
 			"10 items/s (10 total)",
 		},
 
 		{
-			"unit is actually a time unit rate counter",
-			NewPerSecondLocalCounter("ms"),
-			rateGenerator(1*time.Second, 10),
-			"10ms/s (10ms total)",
-		},
-
-		{
 			"average standard rate counter",
-			NewAvgLocalCounter(1*time.Second, "s", "items"),
+			NewAvgLocalRateCounter(1*time.Second, "items"),
 			avgRateGenerator(125, 150, 175),
-			"~150 items/s (over 1s)",
+			"~150 items/s (450 total)",
 		},
 
 		{
 			"average standard unit is actually a time unit counter",
-			NewAvgLocalCounter(1*time.Second, "block", "ms"),
+			NewAvgLocalRateCounter(1*time.Second, "ms/block"),
 			avgRateGenerator(125, 150, 175),
 			"~150ms/block (over 1s)",
 		},
 
 		{
 			"average resets after first round",
-			NewAvgLocalCounter(1*time.Second, "block", "ms"),
+			NewAvgLocalRateCounter(1*time.Second, "ms/block"),
 			avgRateGenerator(125, 150, 175, sleep(1*time.Second)),
 			"0ms/block (over 1s)",
 		},

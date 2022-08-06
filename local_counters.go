@@ -2,6 +2,7 @@ package dmetrics
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -27,33 +28,46 @@ type LocalCounter struct {
 	counter  counter
 	interval time.Duration
 	unit     string
-	timeUnit string
 	total    uint64
 
 	isAverage bool
 }
 
-func NewPerSecondLocalCounter(unit string) *LocalCounter {
-	return NewLocalCounter(1*time.Second, "s", unit)
+func NewPerSecondLocalRateCounter(unit string) *LocalCounter {
+	return NewLocalRateCounter(1*time.Second, unit)
 }
 
-func NewPerMinuteLocalCounter(unit string) *LocalCounter {
-	return NewLocalCounter(1*time.Minute, "min", unit)
+func NewPerMinuteLocalRateCounter(unit string) *LocalCounter {
+	return NewLocalRateCounter(1*time.Minute, unit)
 }
 
-func NewLocalCounter(interval time.Duration, timeUnit string, unit string) *LocalCounter {
-	return &LocalCounter{(*wrappedCounter)(ratecounter.NewRateCounter(interval)), interval, unit, timeUnit, 0, false}
+// NewLocalRateCounter creates a counter on which it's easy to how many time an event happen over a fixed
+// period of time.
+//
+// For example, if over 1 second you process 20 blocks, then querying the counter within this 1s interval
+// will yield a result of 20 blocks/s. The rate change as the time moves.
+//
+// ```
+// counter := NewLocalRateCounter(1*time.Second, "s", "blocks")
+// counter.IncByElapsed(since1)
+// counter.IncByElapsed(since2)
+// counter.IncByElapsed(since3)
+//
+// counter.String() == ~150ms/block (over 1s)
+// ```
+func NewLocalRateCounter(interval time.Duration, unit string) *LocalCounter {
+	return &LocalCounter{(*wrappedCounter)(ratecounter.NewRateCounter(interval)), interval, unit, 0, false}
 }
 
-func NewAvgPerSecondLocalCounter(unit string) *LocalCounter {
-	return NewAvgLocalCounter(1*time.Second, "s", unit)
+func NewAvgPerSecondLocalRateCounter(unit string) *LocalCounter {
+	return NewAvgLocalRateCounter(1*time.Second, unit)
 }
 
-func NewAvgPerMinuteLocalCounter(unit string) *LocalCounter {
-	return NewAvgLocalCounter(1*time.Minute, "min", unit)
+func NewAvgPerMinuteLocalRateCounter(unit string) *LocalCounter {
+	return NewAvgLocalRateCounter(1*time.Minute, unit)
 }
 
-// NewAvgLocalCounter creates a counter on which it's easy to get the average of something
+// NewAvgLocalRateCounter creates a counter on which it's easy to get the average of something
 // over the period of time. For example, if you want to know the average time a repeated task
 // took over the period.
 //
@@ -62,15 +76,15 @@ func NewAvgPerMinuteLocalCounter(unit string) *LocalCounter {
 // elements.
 //
 // ```
-// counter := NewAvgLocalCounter(1*time.Second, "block", "ms")
+// counter := NewAvgLocalRateCounter(1*time.Second, "block", "ms")
 // counter.IncByElapsed(since1)
 // counter.IncByElapsed(since2)
 // counter.IncByElapsed(since3)
 //
 // counter.String() == ~150ms/block (over 1s)
 // ```
-func NewAvgLocalCounter(interval time.Duration, timeUnit string, unit string) *LocalCounter {
-	return &LocalCounter{ratecounter.NewAvgRateCounter(interval), interval, unit, timeUnit, 0, true}
+func NewAvgLocalRateCounter(interval time.Duration, unit string) *LocalCounter {
+	return &LocalCounter{ratecounter.NewAvgRateCounter(interval), interval, unit, 0, true}
 }
 
 // Incr add 1 event into the RateCounter
@@ -118,15 +132,12 @@ func (c *LocalCounter) RateString() string {
 	return strconv.FormatFloat(c.RateFloat64(), 'f', -1, 64)
 }
 
-func (c *LocalCounter) String() string {
-	// For what looks like time unit, we put the unit directly after the rate because
-	// `150ms/block` than `150 ms/block`.
-	isUnitAsTimeUnit := c.unit == "h" || c.unit == "min" || c.unit == "s" || c.unit == "ms"
+var elapsedPerElementUnitRegex = regexp.MustCompile("^(h|min|s|ms)/.+$")
 
-	spaceAfterRate := " "
-	if isUnitAsTimeUnit {
-		spaceAfterRate = ""
-	}
+func (c *LocalCounter) String() string {
+	// We perform special handling of composed elemnt with time elapsed per unit like
+	// `150ms/block`.
+	isElapsedPerElementUnit := elapsedPerElementUnitRegex.MatchString(c.unit)
 
 	if c.isAverage {
 		rate := c.RateString()
@@ -134,15 +145,27 @@ func (c *LocalCounter) String() string {
 			rate = "~" + rate
 		}
 
-		return fmt.Sprintf("%s%s%s/%s (over %s)", rate, spaceAfterRate, c.unit, c.timeUnit, c.intervalString())
+		if isElapsedPerElementUnit {
+			return fmt.Sprintf("%s%s (over %s)", rate, c.unit, c.intervalString())
+		}
+
+		return fmt.Sprintf("%s %s/%s (%d total)", rate, c.unit, c.timeUnit(), c.total)
 	}
 
-	total := fmt.Sprintf("%d total", c.total)
-	if isUnitAsTimeUnit {
-		total = fmt.Sprintf("%d%s total", c.total, c.unit)
-	}
+	return fmt.Sprintf("%s %s/%s (%d total)", c.RateString(), c.unit, c.timeUnit(), c.total)
+}
 
-	return fmt.Sprintf("%s%s%s/%s (%s)", c.RateString(), spaceAfterRate, c.unit, c.timeUnit, total)
+func (c *LocalCounter) timeUnit() string {
+	switch c.interval {
+	case 1 * time.Second:
+		return "s"
+	case 1 * time.Minute:
+		return "min"
+	case 1 * time.Millisecond:
+		return "ms"
+	default:
+		return c.interval.String()
+	}
 }
 
 func (c *LocalCounter) intervalString() string {
