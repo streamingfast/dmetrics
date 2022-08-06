@@ -43,14 +43,14 @@ func TestLocalCounter_String(t *testing.T) {
 			"average standard rate counter",
 			NewAvgLocalRateCounter(1*time.Second, "items"),
 			avgRateGenerator(125, 150, 175),
-			"~150 items/s (450 total)",
+			"150 items/s (450 total)",
 		},
 
 		{
 			"average standard unit is actually a time unit counter",
 			NewAvgLocalRateCounter(1*time.Second, "ms/block"),
 			avgRateGenerator(125, 150, 175),
-			"~150ms/block (over 1s)",
+			"150ms/block (over 1s)",
 		},
 
 		{

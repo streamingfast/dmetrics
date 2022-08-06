@@ -140,16 +140,11 @@ func (c *LocalCounter) String() string {
 	isElapsedPerElementUnit := elapsedPerElementUnitRegex.MatchString(c.unit)
 
 	if c.isAverage {
-		rate := c.RateString()
-		if rate != "0" {
-			rate = "~" + rate
-		}
-
 		if isElapsedPerElementUnit {
-			return fmt.Sprintf("%s%s (over %s)", rate, c.unit, c.intervalString())
+			return fmt.Sprintf("%s%s (over %s)", c.RateString(), c.unit, c.intervalString())
 		}
 
-		return fmt.Sprintf("%s %s/%s (%d total)", rate, c.unit, c.timeUnit(), c.total)
+		return fmt.Sprintf("%s %s/%s (%d total)", c.RateString(), c.unit, c.timeUnit(), c.total)
 	}
 
 	return fmt.Sprintf("%s %s/%s (%d total)", c.RateString(), c.unit, c.timeUnit(), c.total)
