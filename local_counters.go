@@ -102,13 +102,13 @@ func (c *LocalCounter) IncBy(value int64) {
 	c.total += uint64(value)
 }
 
-func (c *LocalCounter) IncByElapsedTime(start time.Time) {
+func (c *LocalCounter) IncByElapsedTime(start time.Time, unit time.Duration) {
 	elapsed := time.Since(start)
 	if elapsed <= 0 {
 		return
 	}
 
-	c.counter.Incr(int64(elapsed))
+	c.counter.Incr(int64(elapsed / unit))
 	c.total += uint64(elapsed)
 }
 
