@@ -76,10 +76,10 @@ func NewAvgPerMinuteLocalRateCounter(unit string) *LocalCounter {
 // elements.
 //
 // ```
-// counter := NewAvgLocalRateCounter(1*time.Second, "block", "ms")
-// counter.IncByElapsed(since1)
-// counter.IncByElapsed(since2)
-// counter.IncByElapsed(since3)
+// counter := NewAvgLocalRateCounter(1*time.Second, "ms/block")
+// counter.IncByElapsedTime(since1, time.Millisecond)
+// counter.IncByElapsedTime(since2, time.Millisecond)
+// counter.IncByElapsedTime(since3, time.Millisecond)
 //
 // counter.String() == ~150ms/block (over 1s)
 // ```
