@@ -47,10 +47,17 @@ func TestLocalCounter_String(t *testing.T) {
 		},
 
 		{
-			"average standard unit is actually a time unit counter",
+			"average standard unit is actually a time unit counter (e.g. <time>/X)",
 			NewAvgLocalRateCounter(1*time.Second, "ms/block"),
 			avgRateGenerator(125, 150, 175),
 			"150ms/block (over 1s)",
+		},
+
+		{
+			"average standard unit is actually a ratio counter (i.e. bytes/msg)",
+			NewAvgLocalRateCounter(1*time.Second, "bytes/msg"),
+			avgRateGenerator(125, 150, 175),
+			"150 bytes/msg (over 1s)",
 		},
 
 		{

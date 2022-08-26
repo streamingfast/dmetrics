@@ -132,16 +132,23 @@ func (c *LocalCounter) RateString() string {
 	return strconv.FormatFloat(c.RateFloat64(), 'f', -1, 64)
 }
 
-var elapsedPerElementUnitRegex = regexp.MustCompile("^(h|min|s|ms)/.+$")
+var ratioUnitRegex = regexp.MustCompile("^[^/]+/.+$")
+var elapsedPerElementUnitPrefixRegex = regexp.MustCompile("^(h|min|s|ms)/")
 
 func (c *LocalCounter) String() string {
-	// We perform special handling of composed elemnt with time elapsed per unit like
-	// `150ms/block`.
-	isElapsedPerElementUnit := elapsedPerElementUnitRegex.MatchString(c.unit)
+	// We perform special handling of ratio elemnt with and time elapsed per in particular
+	// unit like `100 bytes/msg` or `150ms/block`.
+	isRatioUnit := ratioUnitRegex.MatchString(c.unit)
+	isElapsedPerElementUnit := isRatioUnit && elapsedPerElementUnitPrefixRegex.MatchString(c.unit)
 
 	if c.isAverage {
-		if isElapsedPerElementUnit {
-			return fmt.Sprintf("%s%s (over %s)", c.RateString(), c.unit, c.intervalString())
+		if isRatioUnit {
+			template := "%s "
+			if isElapsedPerElementUnit {
+				template = "%s"
+			}
+
+			return fmt.Sprintf(template+"%s (over %s)", c.RateString(), c.unit, c.intervalString())
 		}
 
 		return fmt.Sprintf("%s %s/%s (%d total)", c.RateString(), c.unit, c.timeUnit(), c.total)
