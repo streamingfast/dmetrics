@@ -152,6 +152,9 @@ func (c *CounterVec) AddUint64(value uint64, labels ...string) {
 func (c *CounterVec) AddFloat64(value float64, labels ...string) {
 	c.p.WithLabelValues(labels...).Add(float64(value))
 }
+func (c *CounterVec) DeleteLabelValues(labels ...string) {
+	c.p.DeleteLabelValues(labels...)
+}
 
 func (g *CounterVec) Native() *prometheus.CounterVec  { return g.p }
 func (g *CounterVec) collector() prometheus.Collector { return g.p }
@@ -187,6 +190,10 @@ func (g *GaugeVec) SetUint64(value uint64, labels ...string) {
 
 func (g *GaugeVec) SetFloat64(value float64, labels ...string) {
 	g.p.WithLabelValues(labels...).Set(float64(value))
+}
+
+func (g *GaugeVec) DeleteLabelValues(labels ...string) {
+	g.p.DeleteLabelValues(labels...)
 }
 
 func (g *GaugeVec) Native() *prometheus.GaugeVec    { return g.p }
@@ -276,6 +283,10 @@ func (h *HistogramVec) ObserveUint64(value int64, labels ...string) {
 
 func (h *HistogramVec) ObserveFloat64(value float64, labels ...string) {
 	h.p.WithLabelValues(labels...).Observe(value)
+}
+
+func (h *HistogramVec) DeleteLabelValues(labels ...string) {
+	h.p.DeleteLabelValues(labels...)
 }
 
 func (h *HistogramVec) Native() *prometheus.HistogramVec { return h.p }
