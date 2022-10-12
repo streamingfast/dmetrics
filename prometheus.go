@@ -83,26 +83,35 @@ func (s *Set) Register() {
 	}
 
 	for _, metric := range s.metrics {
-		PrometheusRegister(metric.collector())
+		PrometheusRegister(metric)
 	}
 
 	s.isRegistered = true
 }
 
 type Metric interface {
-	collector() prometheus.Collector
+	prometheus.Collector
 }
+
+// Compile checks to ensure our struct implements the proper metrics
+var _ prometheus.Collector = (*Gauge)(nil)
+var _ prometheus.Collector = (*GaugeVec)(nil)
+var _ prometheus.Collector = (*Counter)(nil)
+var _ prometheus.Collector = (*CounterVec)(nil)
+var _ prometheus.Collector = (*Histogram)(nil)
+var _ prometheus.Collector = (*HistogramVec)(nil)
 
 type Gauge struct {
 	p prometheus.Gauge
 }
 
-func (g *Gauge) Inc()                            { g.p.Inc() }
-func (g *Gauge) Dec()                            { g.p.Dec() }
-func (g *Gauge) SetUint64(value uint64)          { g.p.Set(float64(value)) }
-func (g *Gauge) SetFloat64(value float64)        { g.p.Set(float64(value)) }
-func (g *Gauge) Native() prometheus.Gauge        { return g.p }
-func (g *Gauge) collector() prometheus.Collector { return g.p }
+func (g *Gauge) Inc()                                { g.p.Inc() }
+func (g *Gauge) Dec()                                { g.p.Dec() }
+func (g *Gauge) SetUint64(value uint64)              { g.p.Set(float64(value)) }
+func (g *Gauge) SetFloat64(value float64)            { g.p.Set(float64(value)) }
+func (g *Gauge) Native() prometheus.Gauge            { return g.p }
+func (g *Gauge) Describe(in chan<- *prometheus.Desc) { g.p.Describe(in) }
+func (g *Gauge) Collect(in chan<- prometheus.Metric) { g.p.Collect(in) }
 
 func (s *Set) NewGauge(name string, helpChunks ...string) *Gauge {
 	name = s.computeMetricName(name)
@@ -117,13 +126,14 @@ type Counter struct {
 	p prometheus.Counter
 }
 
-func (c *Counter) Inc()                            { c.p.Inc() }
-func (c *Counter) AddInt(value int)                { c.p.Add(float64(value)) }
-func (c *Counter) AddInt64(value int64)            { c.p.Add(float64(value)) }
-func (c *Counter) AddUint64(value uint64)          { c.p.Add(float64(value)) }
-func (c *Counter) AddFloat64(value float64)        { c.p.Add(float64(value)) }
-func (c *Counter) Native() prometheus.Counter      { return c.p }
-func (c *Counter) collector() prometheus.Collector { return c.p }
+func (c *Counter) Inc()                                { c.p.Inc() }
+func (c *Counter) AddInt(value int)                    { c.p.Add(float64(value)) }
+func (c *Counter) AddInt64(value int64)                { c.p.Add(float64(value)) }
+func (c *Counter) AddUint64(value uint64)              { c.p.Add(float64(value)) }
+func (c *Counter) AddFloat64(value float64)            { c.p.Add(float64(value)) }
+func (c *Counter) Native() prometheus.Counter          { return c.p }
+func (g *Counter) Describe(in chan<- *prometheus.Desc) { g.p.Describe(in) }
+func (g *Counter) Collect(in chan<- prometheus.Metric) { g.p.Collect(in) }
 
 func (s *Set) NewCounter(name string, helpChunks ...string) *Counter {
 	name = s.computeMetricName(name)
@@ -156,8 +166,9 @@ func (c *CounterVec) DeleteLabelValues(labels ...string) {
 	c.p.DeleteLabelValues(labels...)
 }
 
-func (g *CounterVec) Native() *prometheus.CounterVec  { return g.p }
-func (g *CounterVec) collector() prometheus.Collector { return g.p }
+func (g *CounterVec) Native() *prometheus.CounterVec      { return g.p }
+func (g *CounterVec) Describe(in chan<- *prometheus.Desc) { g.p.Describe(in) }
+func (g *CounterVec) Collect(in chan<- prometheus.Metric) { g.p.Collect(in) }
 
 func (s *Set) NewCounterVec(name string, labels []string, helpChunks ...string) *CounterVec {
 	name = s.computeMetricName(name)
@@ -196,8 +207,9 @@ func (g *GaugeVec) DeleteLabelValues(labels ...string) {
 	g.p.DeleteLabelValues(labels...)
 }
 
-func (g *GaugeVec) Native() *prometheus.GaugeVec    { return g.p }
-func (g *GaugeVec) collector() prometheus.Collector { return g.p }
+func (g *GaugeVec) Native() *prometheus.GaugeVec        { return g.p }
+func (g *GaugeVec) Describe(in chan<- *prometheus.Desc) { g.p.Describe(in) }
+func (g *GaugeVec) Collect(in chan<- prometheus.Metric) { g.p.Collect(in) }
 
 func (s *Set) NewGaugeVec(name string, labels []string, helpChunks ...string) *GaugeVec {
 	name = s.computeMetricName(name)
@@ -245,8 +257,9 @@ func (h *Histogram) ObserveFloat64(value float64) {
 	h.p.Observe(value)
 }
 
-func (h *Histogram) Native() prometheus.Histogram    { return h.p }
-func (h *Histogram) collector() prometheus.Collector { return h.p }
+func (h *Histogram) Native() prometheus.Histogram        { return h.p }
+func (h *Histogram) Describe(in chan<- *prometheus.Desc) { h.p.Describe(in) }
+func (h *Histogram) Collect(in chan<- prometheus.Metric) { h.p.Collect(in) }
 
 type HistogramVec struct {
 	p *prometheus.HistogramVec
@@ -289,8 +302,9 @@ func (h *HistogramVec) DeleteLabelValues(labels ...string) {
 	h.p.DeleteLabelValues(labels...)
 }
 
-func (h *HistogramVec) Native() *prometheus.HistogramVec { return h.p }
-func (h *HistogramVec) collector() prometheus.Collector  { return h.p }
+func (h *HistogramVec) Native() *prometheus.HistogramVec    { return h.p }
+func (h *HistogramVec) Describe(in chan<- *prometheus.Desc) { h.p.Describe(in) }
+func (h *HistogramVec) Collect(in chan<- prometheus.Metric) { h.p.Collect(in) }
 
 var nameSanitizerRegex = regexp.MustCompile("[^a-zA-Z0-9_]+")
 
