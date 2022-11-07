@@ -11,43 +11,55 @@ import (
 	"go.uber.org/atomic"
 )
 
-// Countable an interface that is used by AvgRateCounter to get the
-// running count
-//
-// We have 2 implementation of this interface:
-// 	- A Prometheus Metric object
-//  - A Atomic counter
-type Countable interface {
-	Count() uint64
-}
-
-type AtomicCounter struct {
-	count atomic.Uint64
-}
-
-func NewAtomicCounter() *AtomicCounter {
-	return &AtomicCounter{}
-}
-
-func (a *AtomicCounter) Count() uint64 {
-	v := a.count.Load()
-	return v
-}
-
-func (a *AtomicCounter) Add(v uint64) {
-	a.count.Add(v)
-}
-
-// PromCountable is a small wrapper to get a Prometheus Metric object tp implement the Countable inteface
 // *Important* This  handles `Vec` metrics by summing for all labels, extracting for one specific label or for all labels is not yet supported.
-type PromCountable struct {
-	counter prometheus.Collector
+
+//
+type AvgRatePromCounter struct {
+	*avgRate
+	collector prometheus.Collector
 }
 
-func (p *PromCountable) current() uint64 {
+func MustNewAvgRateFromPromCounter(promCollector prometheus.Collector, samplingWindow time.Duration, period time.Duration, unit string) *AvgRatePromCounter {
+	a, err := NewAvgRateFromPromCounter(promCollector, samplingWindow, period, unit)
+	if err != nil {
+		panic(err)
+	}
+	return a
+}
+
+// NewAvgRateFromPromCounter Extracts the average rate of a Prom Collector
+// over a period of time. The rate is computed by accumulating the total
+// count at the <samplingWindow> interval and averaging them our ove the number
+// of <period> defined.
+// Suppose there is a block count that increments as follows
+//
+//	0s to 1s -> 10 blocks
+//	1s to 2s -> 3 blocks
+//	2s to 3s -> 0 blocks
+//	3s to 4s -> 7 blocks
+//
+// If your  samplingWindow = 1s and your period = 4s, the rate will be computed as
+//	(10 + 3 + 0 + 7)/4 = 5 blocks/sec
+//
+// If your  samplingWindow = 1s and your period = 3s, the rate will be computed as
+//	(10 + 3 + 0)/4 = 4.33 blocks/sec
+// then when the "window moves" you would get
+//	(3 + 0 + 7)/4 = 3.333 blocks/sec
+//
+func NewAvgRateFromPromCounter(promCollector prometheus.Collector, samplingWindow time.Duration, period time.Duration, unit string) (*AvgRatePromCounter, error) {
+	a := &AvgRatePromCounter{collector: promCollector}
+	avgRage, err := newAvgRateCounter(a.count, samplingWindow, period, unit)
+	if err != nil {
+		return nil, fmt.Errorf("new avg rate counter: %w", err)
+	}
+	a.avgRate = avgRage
+	return a, nil
+}
+
+func (a *AvgRatePromCounter) count() uint64 {
 	metricChan := make(chan prometheus.Metric, 16)
 	go func() {
-		p.counter.Collect(metricChan)
+		a.collector.Collect(metricChan)
 		close(metricChan)
 	}()
 
@@ -68,23 +80,55 @@ func (p *PromCountable) current() uint64 {
 }
 
 type AvgRateCounter struct {
-	//counter        prometheus.Collector
-	counter        Countable
-	samplingWindow time.Duration
-	unit           string
-	bucketCount    uint64
-	totals         *ring.Ring[uint64]
-	actualTotal    uint64
-	actualCount    uint64
+	*avgRate
+	c *atomic.Uint64
 }
 
-func MustNewAvgRateCounter(counter Countable, samplingWindow time.Duration, period time.Duration, unit string) *AvgRateCounter {
-	a, err := NewAvgRateCounter(counter, samplingWindow, period, unit)
+func MustNewAvgRateCounter(samplingWindow time.Duration, period time.Duration, unit string) *AvgRateCounter {
+	a, err := NewAvgRateCounter(samplingWindow, period, unit)
 	if err != nil {
 		panic(err)
 	}
 	return a
 }
+
+// NewAvgRateCounter Tracks the average rate over a period of time. The rate is
+// computed by accumulating the total count at the <samplingWindow> interval and
+// averaging them our ove the number of <period> defined.
+// Suppose there is a block count that increments as follows
+//
+//	0s to 1s -> 10 blocks
+//	1s to 2s -> 3 blocks
+//	2s to 3s -> 0 blocks
+//	3s to 4s -> 7 blocks
+//
+// If your  samplingWindow = 1s and your period = 4s, the rate will be computed as
+//	(10 + 3 + 0 + 7)/4 = 5 blocks/sec
+//
+// If your  samplingWindow = 1s and your period = 3s, the rate will be computed as
+//	(10 + 3 + 0)/4 = 4.33 blocks/sec
+// then when the "window moves" you would get
+//	(3 + 0 + 7)/4 = 3.333 blocks/sec
+func NewAvgRateCounter(samplingWindow time.Duration, period time.Duration, unit string) (*AvgRateCounter, error) {
+	a := &AvgRateCounter{c: atomic.NewUint64(0)}
+	avgRage, err := newAvgRateCounter(a.count, samplingWindow, period, unit)
+	if err != nil {
+		return nil, fmt.Errorf("new avg rate counter: %w", err)
+	}
+	a.avgRate = avgRage
+	return a, nil
+}
+
+// Add tracks a number of events, to be used to compute the rage
+func (a *AvgRateCounter) Add(v uint64) {
+	a.c.Add(v)
+}
+
+func (a *AvgRateCounter) count() uint64 {
+	return a.c.Load()
+}
+
+type CountableFunc = func() uint64
 
 // NewAvgRateCounter AvgRateCounter can be used to extract the average rate of a Countable object
 // over a period of time. The computation is to accumulate the instant metric each <samplingWindow>
@@ -93,7 +137,20 @@ func MustNewAvgRateCounter(counter Countable, samplingWindow time.Duration, peri
 //
 // If you for example want to log the rate of something each 30s and the rate is checked each 1s,
 // your <period> should be set to 30s.
-func NewAvgRateCounter(counter Countable, samplingWindow time.Duration, period time.Duration, unit string) (*AvgRateCounter, error) {
+
+type avgRate struct {
+	//counter        prometheus.Collector
+	counterFunc    CountableFunc
+	samplingWindow time.Duration
+	unit           string
+	bucketCount    uint64
+	totals         *ring.Ring[uint64]
+	actualTotal    uint64
+	actualCount    uint64
+}
+
+func newAvgRateCounter(counter CountableFunc, samplingWindow time.Duration, period time.Duration, unit string) (*avgRate, error) {
+
 	if samplingWindow == 0 {
 		return nil, fmt.Errorf("sampling window must be greater then 0")
 	}
@@ -108,8 +165,8 @@ func NewAvgRateCounter(counter Countable, samplingWindow time.Duration, period t
 
 	bucketCount := (uint64(period / samplingWindow)) + 1
 
-	rate := &AvgRateCounter{
-		counter:        counter,
+	rate := &avgRate{
+		counterFunc:    counter,
 		samplingWindow: samplingWindow,
 		unit:           unit,
 		bucketCount:    bucketCount,
@@ -122,27 +179,13 @@ func NewAvgRateCounter(counter Countable, samplingWindow time.Duration, period t
 	return rate, nil
 }
 
-func (c *AvgRateCounter) Total() uint64 {
-	return c.actualTotal
-}
-
-func (c *AvgRateCounter) RateInt64() int64 {
-	return int64(c.rate())
-}
-
-func (c *AvgRateCounter) RateFloat64() float64 {
-	return c.rate()
-}
-
-func (c *AvgRateCounter) RateString() string {
-	return strconv.FormatFloat(c.RateFloat64(), 'f', -1, 64)
-}
-
-func (c *AvgRateCounter) String() string {
+func (c *avgRate) Total() uint64      { return c.actualTotal }
+func (c *avgRate) Rate() float64      { return c.rate() }
+func (c *avgRate) RateString() string { return strconv.FormatFloat(c.Rate(), 'f', 3, 64) }
+func (c *avgRate) String() string {
 	return fmt.Sprintf("%s %s/%s (%d total)", c.RateString(), c.unit, timeUnitToString(c.samplingWindow), c.Total())
 }
-
-func (c *AvgRateCounter) rate() float64 {
+func (c *avgRate) rate() float64 {
 	skip := uint64(0)
 	if c.actualCount < uint64(c.bucketCount) {
 		// We do an extra minus one because we are interested about delta and there is always `c.bucketCount - 1` deltas
@@ -169,7 +212,7 @@ func (c *AvgRateCounter) rate() float64 {
 
 // FIXME: Use finalizer trick (search online) to stop the goroutine when the counter goes out of scope
 // for now, lifecycle is not handled a rate from counter lives forever
-func (c *AvgRateCounter) run() {
+func (c *avgRate) run() {
 	go func() {
 		ticker := time.NewTicker(c.samplingWindow)
 		defer ticker.Stop()
@@ -178,7 +221,7 @@ func (c *AvgRateCounter) run() {
 			<-ticker.C
 
 			c.actualCount++
-			c.actualTotal = c.counter.Count()
+			c.actualTotal = c.counterFunc()
 
 			c.totals.Value = c.actualTotal
 			c.totals = c.totals.Next()
