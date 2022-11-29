@@ -2,6 +2,7 @@ module github.com/streamingfast/dmetrics
 
 go 1.18
 
+
 require (
 	github.com/paulbellamy/ratecounter v0.2.0
 	github.com/prometheus/client_golang v1.11.0

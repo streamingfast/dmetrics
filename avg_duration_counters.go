@@ -17,18 +17,18 @@ type AvgDurationCounter struct {
 }
 
 // NewAvgDurationCounter allows you to get teh average elapsed time of a given process
-//. For example, if you want to know the average block process time
+// As an example, if you want to know the average block process time.
 //
-// For example, if over 1 second you process 3 blocks where the processing
-// time respectively takes 2s, 5s, 300ms. Teh average will yield a result of 2.433333333333333s per block.
+// Example: if over 1 second you process 3 blocks where the processing
+// time respectively takes 2s, 5s, 300ms. The average will yield a result of 2.433333333333333s per block.
 //
 // ```
-// counter := NewAvgDurationCounter(1*time.Second, "cache hits", "block")
+// counter := NewAvgDurationCounter(30*time.Second, time.Second, "block")
 // counter.AddDuration(2 * time.Second)
 // counter.AddDuration(5 * time.Second)
 // counter.AddDuration(300 * time.Millisecond)
 //
-// counter.String() == avg 2.4333333333333336s block (in the last 1s) [total 7.3s]
+// counter.String() == avg 2.4333333333333336s block (in the last 30s) [total 7.3s]
 // ```
 
 func NewAvgDurationCounter(samplingWindow time.Duration, unit time.Duration, description string) *AvgDurationCounter {
