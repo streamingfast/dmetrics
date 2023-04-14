@@ -23,6 +23,7 @@ import (
 func Serve(addr string) {
 	serve := http.Server{Handler: promhttp.Handler(), Addr: addr}
 	if err := serve.ListenAndServe(); err != nil {
-		zlog.Info("can't listen on the metrics endpoint")
+		// It's common enough in development that we are good if it doesn't print
+		zlog.Debug("can't listen on the metrics endpoint")
 	}
 }
