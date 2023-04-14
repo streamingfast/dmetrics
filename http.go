@@ -18,12 +18,13 @@ import (
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.uber.org/zap"
 )
 
 func Serve(addr string) {
 	serve := http.Server{Handler: promhttp.Handler(), Addr: addr}
 	if err := serve.ListenAndServe(); err != nil {
 		// It's common enough in development that we are good if it doesn't print
-		zlog.Debug("can't listen on the metrics endpoint")
+		zlog.Debug("can't listen on the metrics endpoint", zap.Error(err), zap.String("listen_addr", addr))
 	}
 }
