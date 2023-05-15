@@ -17,21 +17,18 @@ package dmetrics
 import (
 	"time"
 
-	"go.uber.org/atomic"
-
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/atomic"
 )
 
 var headTimeDriftGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 	Name: "head_block_time_drift",
 	Help: "Number of seconds away from real-time",
-},
-	[]string{"app"})
+}, []string{"app"})
 
 var headBlockNumber = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 	Name: "head_block_number",
-},
-	[]string{"app"})
+}, []string{"app"})
 
 type HeadTimeDrift struct {
 	headBlockTimeCh chan time.Time
@@ -51,7 +48,6 @@ func (s *Set) NewHeadTimeDrift(service string) *HeadTimeDrift {
 	return h
 }
 
-func (h *HeadTimeDrift) collector() prometheus.Collector { return headTimeDriftGauge }
 func (h *HeadTimeDrift) SetBlockTime(blockTime time.Time) {
 	if !h.started.Load() {
 		go func() {

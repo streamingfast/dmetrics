@@ -2,82 +2,27 @@ package dmetrics
 
 import (
 	"fmt"
+	"runtime"
 	"strconv"
+	"sync"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	dto "github.com/prometheus/client_model/go"
 	"github.com/streamingfast/dmetrics/ring"
 	"go.uber.org/atomic"
 )
 
-// *Important* This  handles `Vec` metrics by summing for all labels, extracting for one specific label or for all labels is not yet supported.
-
+// avgRateCounter exists because we use a janitor that is invoked when the object embedding `avgRate
+// is actually gargabed collected. This object is of different type and we cannot know of which this is
+// going to be.
 //
-type AvgRatePromCounter struct {
-	*avgRate
-	collector prometheus.Collector
+// So we have defined this interface, that `avgRate` implements itself so everyone that embeds `avgRate`
+// struct is automatically a `avgRateCounter` interface. In the `janitor` finalizer, we then use this
+// interface to terminate the work.
+type avgRateCounter interface {
+	getAvgRate() *avgRate
 }
 
-func MustNewAvgRateFromPromCounter(promCollector prometheus.Collector, samplingWindow time.Duration, period time.Duration, unit string) *AvgRatePromCounter {
-	a, err := NewAvgRateFromPromCounter(promCollector, samplingWindow, period, unit)
-	if err != nil {
-		panic(err)
-	}
-	return a
-}
-
-// NewAvgRateFromPromCounter Extracts the average rate of a Prom Collector
-// over a period of time. The rate is computed by accumulating the total
-// count at the <samplingWindow> interval and averaging them our ove the number
-// of <period> defined.
-// Suppose there is a block count that increments as follows
-//
-//	0s to 1s -> 10 blocks
-//	1s to 2s -> 3 blocks
-//	2s to 3s -> 0 blocks
-//	3s to 4s -> 7 blocks
-//
-// If your  samplingWindow = 1s and your period = 4s, the rate will be computed as
-//	(10 + 3 + 0 + 7)/4 = 5 blocks/sec
-//
-// If your  samplingWindow = 1s and your period = 3s, the rate will be computed as
-//	(10 + 3 + 0)/4 = 4.33 blocks/sec
-// then when the "window moves" you would get
-//	(3 + 0 + 7)/4 = 3.333 blocks/sec
-//
-func NewAvgRateFromPromCounter(promCollector prometheus.Collector, samplingWindow time.Duration, period time.Duration, unit string) (*AvgRatePromCounter, error) {
-	a := &AvgRatePromCounter{collector: promCollector}
-	avgRage, err := newAvgRateCounter(a.count, samplingWindow, period, unit)
-	if err != nil {
-		return nil, fmt.Errorf("new avg rate counter: %w", err)
-	}
-	a.avgRate = avgRage
-	return a, nil
-}
-
-func (a *AvgRatePromCounter) count() uint64 {
-	metricChan := make(chan prometheus.Metric, 16)
-	go func() {
-		a.collector.Collect(metricChan)
-		close(metricChan)
-	}()
-
-	sum := 0.0
-	for value := range metricChan {
-		model := new(dto.Metric)
-		err := value.Write(model)
-		if err != nil {
-			panic(err)
-		}
-
-		if model.Counter != nil && model.Counter.Value != nil {
-			sum += *model.Counter.Value
-		}
-	}
-
-	return uint64(sum)
-}
+var _ avgRateCounter = (*AvgRateCounter)(nil)
 
 type AvgRateCounter struct {
 	*avgRate
@@ -103,19 +48,32 @@ func MustNewAvgRateCounter(samplingWindow time.Duration, period time.Duration, u
 //	3s to 4s -> 7 blocks
 //
 // If your  samplingWindow = 1s and your period = 4s, the rate will be computed as
+//
 //	(10 + 3 + 0 + 7)/4 = 5 blocks/sec
 //
 // If your  samplingWindow = 1s and your period = 3s, the rate will be computed as
+//
 //	(10 + 3 + 0)/4 = 4.33 blocks/sec
+//
 // then when the "window moves" you would get
+//
 //	(3 + 0 + 7)/4 = 3.333 blocks/sec
 func NewAvgRateCounter(samplingWindow time.Duration, period time.Duration, unit string) (*AvgRateCounter, error) {
 	a := &AvgRateCounter{c: atomic.NewUint64(0)}
-	avgRage, err := newAvgRateCounter(a.count, samplingWindow, period, unit)
+	avgRage, err := newAvgRate(a.count, samplingWindow, period, unit)
 	if err != nil {
 		return nil, fmt.Errorf("new avg rate counter: %w", err)
 	}
 	a.avgRate = avgRage
+
+	// This trick ensures that the janitor goroutine (which--granted it
+	// was enabled--is running DeleteExpired on c forever) does not keep
+	// the returned C object from being garbage collected. When it is
+	// garbage collected, the finalizer stops the janitor goroutine, after
+	// which c can be collected.
+	runJanitor(avgRage, samplingWindow)
+	runtime.SetFinalizer(a, stopJanitor)
+
 	return a, nil
 }
 
@@ -126,6 +84,10 @@ func (a *AvgRateCounter) Add(v uint64) {
 
 func (a *AvgRateCounter) count() uint64 {
 	return a.c.Load()
+}
+
+func (c *AvgRateCounter) Stop() {
+	stopJanitor(c)
 }
 
 type CountableFunc = func() uint64
@@ -144,13 +106,14 @@ type avgRate struct {
 	samplingWindow time.Duration
 	unit           string
 	bucketCount    uint64
-	totals         *ring.Ring[uint64]
-	actualTotal    uint64
-	actualCount    uint64
+	janitor        *janitor
+
+	totals      *ring.Ring[uint64]
+	actualTotal uint64
+	actualCount uint64
 }
 
-func newAvgRateCounter(counter CountableFunc, samplingWindow time.Duration, period time.Duration, unit string) (*avgRate, error) {
-
+func newAvgRate(counter CountableFunc, samplingWindow time.Duration, period time.Duration, unit string) (*avgRate, error) {
 	if samplingWindow == 0 {
 		return nil, fmt.Errorf("sampling window must be greater then 0")
 	}
@@ -165,18 +128,13 @@ func newAvgRateCounter(counter CountableFunc, samplingWindow time.Duration, peri
 
 	bucketCount := (uint64(period / samplingWindow)) + 1
 
-	rate := &avgRate{
+	return &avgRate{
 		counterFunc:    counter,
 		samplingWindow: samplingWindow,
 		unit:           unit,
 		bucketCount:    bucketCount,
 		totals:         ring.New[uint64](int(bucketCount)),
-	}
-
-	// FIXME: See `run` documentation about the FIXME
-	rate.run()
-
-	return rate, nil
+	}, nil
 }
 
 func (c *avgRate) Total() uint64      { return c.actualTotal }
@@ -210,21 +168,67 @@ func (c *avgRate) rate() float64 {
 	return float64(sum) / float64(deltaCount)
 }
 
-// FIXME: Use finalizer trick (search online) to stop the goroutine when the counter goes out of scope
-// for now, lifecycle is not handled a rate from counter lives forever
-func (c *avgRate) run() {
-	go func() {
-		ticker := time.NewTicker(c.samplingWindow)
-		defer ticker.Stop()
+func (c *avgRate) SyncNow() {
+	if c.janitor != nil {
+		c.janitor.wake <- true
+	}
+}
 
-		for {
-			<-ticker.C
+func (c *avgRate) syncNow() {
+	c.actualCount++
+	c.actualTotal = c.counterFunc()
 
-			c.actualCount++
-			c.actualTotal = c.counterFunc()
+	c.totals.Value = c.actualTotal
+	c.totals = c.totals.Next()
+}
 
-			c.totals.Value = c.actualTotal
-			c.totals = c.totals.Next()
+func (c *avgRate) getAvgRate() *avgRate {
+	return c
+}
+
+type janitor struct {
+	samplingWindow time.Duration
+	wake           chan bool
+	stop           chan bool
+	once           *sync.Once
+}
+
+func (j *janitor) run(r *avgRate) {
+	ticker := time.NewTicker(j.samplingWindow)
+
+	for {
+		select {
+		case <-ticker.C:
+			r.syncNow()
+		case <-j.wake:
+			r.syncNow()
+		case <-j.stop:
+			ticker.Stop()
+			return
 		}
-	}()
+	}
+}
+
+func stopJanitor(c avgRateCounter) {
+	j := c.getAvgRate().janitor
+
+	if j != nil {
+		j.once.Do(func() {
+			j.stop <- true
+			close(j.stop)
+			close(j.wake)
+		})
+	}
+}
+
+func runJanitor(r *avgRate, samplingWindow time.Duration) {
+	j := &janitor{
+		samplingWindow: samplingWindow,
+		stop:           make(chan bool),
+		wake:           make(chan bool),
+		once:           &sync.Once{},
+	}
+	r.janitor = j
+
+	go j.run(r)
 }

@@ -18,7 +18,7 @@ type AvgCounter struct {
 // NewAvgCounter allows you to get the average of an event over the period of time.
 // For example, if you want to know the average cache hits in a given time
 //
-// Over 1 second, you will increment the average by the number of cache hits
+// # Over 1 second, you will increment the average by the number of cache hits
 //
 // ```
 // counter := NewAvgCounter(1*time.Second, "cache hits")

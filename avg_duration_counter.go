@@ -71,16 +71,3 @@ func (c *AvgDurationCounter) String() string {
 	unitStr := timeUnitToString(c.unit)
 	return fmt.Sprintf("avg %s%s %s (in the last %s) [total %s%s]", c.AverageString(), unitStr, c.description, samplingWindowToString(c.samplingWindow), total, unitStr)
 }
-
-func (c *AvgDurationCounter) intervalString() string {
-	switch c.samplingWindow {
-	case 1 * time.Second:
-		return "1s"
-	case 1 * time.Minute:
-		return "1min"
-	case 1 * time.Millisecond:
-		return "1ms"
-	default:
-		return c.samplingWindow.String()
-	}
-}
