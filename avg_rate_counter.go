@@ -168,9 +168,23 @@ func (c *avgRate) rate() float64 {
 	return float64(sum) / float64(deltaCount)
 }
 
+// SyncNow forces a sync to retrieve the value(s) of the counter(s)
+// and update the average rate.
+//
+// This call is blocking until the sync is performed.
 func (c *avgRate) SyncNow() {
 	if c.janitor != nil {
-		c.janitor.wake <- true
+		select {
+		case c.janitor.wake <- true:
+		case <-c.janitor.stop:
+			return
+		}
+
+		// Block until the sync is performed (or janitor is stopped)
+		select {
+		case <-c.janitor.syncPerformed:
+		case <-c.janitor.stop:
+		}
 	}
 }
 
@@ -190,6 +204,7 @@ type janitor struct {
 	samplingWindow time.Duration
 	wake           chan bool
 	stop           chan bool
+	syncPerformed  chan bool
 	once           *sync.Once
 }
 
@@ -202,6 +217,12 @@ func (j *janitor) run(r *avgRate) {
 			r.syncNow()
 		case <-j.wake:
 			r.syncNow()
+
+			select {
+			case j.syncPerformed <- true:
+			default:
+				// Channel is full, no one consumes, we don't care
+			}
 		case <-j.stop:
 			ticker.Stop()
 			return
@@ -224,8 +245,9 @@ func stopJanitor(c avgRateCounter) {
 func runJanitor(r *avgRate, samplingWindow time.Duration) {
 	j := &janitor{
 		samplingWindow: samplingWindow,
-		stop:           make(chan bool),
-		wake:           make(chan bool),
+		stop:           make(chan bool, 1),
+		wake:           make(chan bool, 1),
+		syncPerformed:  make(chan bool, 1),
 		once:           &sync.Once{},
 	}
 	r.janitor = j
