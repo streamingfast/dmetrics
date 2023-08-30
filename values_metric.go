@@ -44,7 +44,7 @@ func (c *ValuesFromMetric) Floats(label string) map[string]float64 {
 
 		var labelValue *string
 		for _, pair := range model.Label {
-			if pair.Name != nil && *pair.Name == label && labelValue != nil {
+			if pair.Name != nil && *pair.Name == label && pair.Value != nil {
 				labelValue = pair.Value
 				break
 			}
