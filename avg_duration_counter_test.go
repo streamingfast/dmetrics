@@ -15,6 +15,18 @@ func TestAvgDurationCounter(t *testing.T) {
 	r.AddDuration(5 * time.Second)
 	r.AddDuration(300 * time.Millisecond)
 	// (2 + 5 + 0.5) / 3 == 2.4333
-	assert.InDelta(t, 2.433333333333333, r.Average(), 0.1)
+	assert.InDelta(t, 2.433333333333333, float64(r.Average())/float64(time.Second), 0.1)
+	assert.Equal(t, "2.43s per block (avg over 1s)", r.String())
+}
+
+func TestAvgDurationCounter_InferUnit(t *testing.T) {
+	samplingWindow := 1 * time.Second
+	r := NewAvgDurationCounter(samplingWindow, 0, "per block")
+
+	r.AddDuration(2 * time.Second)
+	r.AddDuration(5 * time.Second)
+	r.AddDuration(300 * time.Millisecond)
+	// (2 + 5 + 0.5) / 3 == 2.4333
+	assert.InDelta(t, 2.433333333333333, float64(r.Average())/float64(time.Second), 0.1)
 	assert.Equal(t, "2.43s per block (avg over 1s)", r.String())
 }

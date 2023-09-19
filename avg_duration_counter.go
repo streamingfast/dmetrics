@@ -2,7 +2,6 @@ package dmetrics
 
 import (
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/paulbellamy/ratecounter"
@@ -30,7 +29,10 @@ type AvgDurationCounter struct {
 //
 // counter.String() == 2.43s per block (avg over 30s)
 // ```
-
+//
+// The `unit` parameter can be 0, in which case the unit will be inferred based on the
+// actual duration, e.g. if the average is 1.5s, the unit will be 1s while if the average is
+// 10us, the unit will be 10us.
 func NewAvgDurationCounter(samplingWindow time.Duration, unit time.Duration, description string) *AvgDurationCounter {
 	return &AvgDurationCounter{
 		counter:        ratecounter.NewAvgRateCounter(samplingWindow),
@@ -54,18 +56,18 @@ func (c *AvgDurationCounter) AddDuration(dur time.Duration) {
 	c.total += int64(dur)
 }
 
-func (c *AvgDurationCounter) Average() float64 {
-	return c.counter.Rate() / float64(c.unit)
+func (c *AvgDurationCounter) Average() time.Duration {
+	return time.Duration(c.counter.Rate())
 }
 
-func (c *AvgDurationCounter) Total() float64 {
-	return float64(c.total) / float64(c.unit)
+func (c *AvgDurationCounter) Total() time.Duration {
+	return time.Duration(c.total)
 }
 
 func (c *AvgDurationCounter) AverageString() string {
-	return strconv.FormatFloat(c.Average(), 'f', 2, 64)
+	return durationToString(time.Duration(c.Average()), c.unit)
 }
 
 func (c *AvgDurationCounter) String() string {
-	return fmt.Sprintf("%s%s %s (avg over %s)", c.AverageString(), timeUnitToString(c.unit), c.description, samplingWindowToString(c.samplingWindow))
+	return fmt.Sprintf("%s %s (avg over %s)", c.AverageString(), c.description, samplingWindowToString(c.samplingWindow))
 }
