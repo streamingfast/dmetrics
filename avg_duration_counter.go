@@ -20,15 +20,15 @@ type AvgDurationCounter struct {
 // As an example, if you want to know the average block process time.
 //
 // Example: if over 1 second you process 3 blocks where the processing
-// time respectively takes 2s, 5s, 300ms. The average will yield a result of 2.433333333333333s per block.
+// time respectively takes 2s, 5s, 300ms. The average will yield a result of 2.43s per block.
 //
 // ```
-// counter := NewAvgDurationCounter(30*time.Second, time.Second, "block")
+// counter := NewAvgDurationCounter(30*time.Second, time.Second, "per block")
 // counter.AddDuration(2 * time.Second)
 // counter.AddDuration(5 * time.Second)
 // counter.AddDuration(300 * time.Millisecond)
 //
-// counter.String() == avg 2.4333333333333336s block (in the last 30s) [total 7.3s]
+// counter.String() == 2.43s per block (avg over 30s)
 // ```
 
 func NewAvgDurationCounter(samplingWindow time.Duration, unit time.Duration, description string) *AvgDurationCounter {
@@ -63,11 +63,9 @@ func (c *AvgDurationCounter) Total() float64 {
 }
 
 func (c *AvgDurationCounter) AverageString() string {
-	return strconv.FormatFloat(c.Average(), 'f', -1, 64)
+	return strconv.FormatFloat(c.Average(), 'f', 2, 64)
 }
 
 func (c *AvgDurationCounter) String() string {
-	total := strconv.FormatFloat(c.Total(), 'f', -1, 64)
-	unitStr := timeUnitToString(c.unit)
-	return fmt.Sprintf("avg %s%s %s (in the last %s) [total %s%s]", c.AverageString(), unitStr, c.description, samplingWindowToString(c.samplingWindow), total, unitStr)
+	return fmt.Sprintf("%s%s %s (avg over %s)", c.AverageString(), timeUnitToString(c.unit), c.description, samplingWindowToString(c.samplingWindow))
 }
