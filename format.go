@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+var InferUnit = time.Duration(0)
+
 func timeUnitToString(unit time.Duration) string {
 	switch unit {
 	case 1 * time.Second:
