@@ -46,6 +46,10 @@ func (c *ValueFromMetric) ValueFloat() float64 {
 		if model.Gauge != nil && model.Gauge.Value != nil {
 			firstValue = model.Gauge.Value
 		}
+
+		if model.Counter != nil && model.Counter.Value != nil {
+			firstValue = model.Counter.Value
+		}
 	}
 
 	if firstValue != nil {
