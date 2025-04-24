@@ -66,11 +66,23 @@ func (h *HeadTimeDrift) SetBlockTime(blockTime time.Time) {
 	h.headBlockTimeCh <- blockTime
 }
 
+// Collect implements prometheus.Collector.
+func (h *HeadTimeDrift) Collect(ch chan<- prometheus.Metric) {
+	headTimeDriftGauge.Collect(ch)
+}
+
+// Describe implements prometheus.Collector.
+func (h *HeadTimeDrift) Describe(ch chan<- *prometheus.Desc) {
+	headTimeDriftGauge.Describe(ch)
+}
+
 func (s *Set) NewHeadBlockNumber(service string) *HeadBlockNum {
 	return &HeadBlockNum{
 		service: service,
 	}
 }
+
+var _ prometheus.Collector = (*HeadBlockNum)(nil)
 
 type HeadBlockNum struct {
 	service string
@@ -78,6 +90,16 @@ type HeadBlockNum struct {
 
 func (h *HeadBlockNum) SetUint64(blockNum uint64) {
 	headBlockNumber.WithLabelValues(h.service).Set(float64(blockNum))
+}
+
+// Collect implements prometheus.Collector.
+func (h *HeadBlockNum) Collect(ch chan<- prometheus.Metric) {
+	headBlockNumber.Collect(ch)
+}
+
+// Describe implements prometheus.Collector.
+func (h *HeadBlockNum) Describe(ch chan<- *prometheus.Desc) {
+	headBlockNumber.Describe(ch)
 }
 
 func init() {
