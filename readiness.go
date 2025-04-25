@@ -44,6 +44,15 @@ func (a *AppReadiness) SetNotReady() {
 	appReady.WithLabelValues(a.service).Set(0)
 }
 
+func (a *AppReadiness) IsReady() bool {
+	values := ReadMetricValuesFloat64(appReady, "app")
+	if len(values) == 0 {
+		return false
+	}
+
+	return values[a.service] == 1.0
+}
+
 func init() {
 	PrometheusRegister(appReady)
 }

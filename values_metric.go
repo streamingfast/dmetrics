@@ -27,13 +27,19 @@ func (c *ValuesFromMetric) Uints(label string) map[string]uint64 {
 // Floats(label string) gets you the float64 values for each value of the given label.
 // Values without that label or with a nil value for that label are discarded
 func (c *ValuesFromMetric) Floats(label string) map[string]float64 {
+	return ReadMetricValuesFloat64(c.metric, label)
+}
+
+// ReadMetricValuesFloat64 gets you the float64 values for each value of the given label.
+// Values without that label or with a nil value for that label are discarded
+func ReadMetricValuesFloat64(metric prometheus.Collector, label string) (out map[string]float64) {
 	metricChan := make(chan prometheus.Metric, 16)
 	go func() {
-		c.metric.Collect(metricChan)
+		metric.Collect(metricChan)
 		close(metricChan)
 	}()
 
-	out := make(map[string]float64)
+	out = make(map[string]float64)
 	for value := range metricChan {
 
 		model := new(dto.Metric)

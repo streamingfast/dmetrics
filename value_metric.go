@@ -24,9 +24,14 @@ func (c *ValueFromMetric) ValueUint() uint64 {
 }
 
 func (c *ValueFromMetric) ValueFloat() float64 {
+	return ReadMetricValueFloat64(c.metric)
+}
+
+// ReadMetricValueFloat64 reads the first value of a metric and returns it as a float64.
+func ReadMetricValueFloat64(metric prometheus.Collector) float64 {
 	metricChan := make(chan prometheus.Metric, 16)
 	go func() {
-		c.metric.Collect(metricChan)
+		metric.Collect(metricChan)
 		close(metricChan)
 	}()
 
