@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	io_prometheus_client "github.com/prometheus/client_model/go"
 )
 
 var mutex sync.Mutex
@@ -113,6 +114,12 @@ func (g *Gauge) Native() prometheus.Gauge            { return g.p }
 func (g *Gauge) Describe(in chan<- *prometheus.Desc) { g.p.Describe(in) }
 func (g *Gauge) Collect(in chan<- prometheus.Metric) { g.p.Collect(in) }
 
+func (g *Gauge) Get() float64 {
+	out := io_prometheus_client.Metric{}
+	_ = g.p.Write(&out)
+	return out.Gauge.GetValue()
+}
+
 func (s *Set) NewGauge(name string, helpChunks ...string) *Gauge {
 	name = s.computeMetricName(name)
 	g := prometheus.NewGauge(prometheus.GaugeOpts{Name: name, Help: generateMetricsHelp(name, helpChunks)})
@@ -132,8 +139,13 @@ func (c *Counter) AddInt64(value int64)                { c.p.Add(float64(value))
 func (c *Counter) AddUint64(value uint64)              { c.p.Add(float64(value)) }
 func (c *Counter) AddFloat64(value float64)            { c.p.Add(float64(value)) }
 func (c *Counter) Native() prometheus.Counter          { return c.p }
-func (g *Counter) Describe(in chan<- *prometheus.Desc) { g.p.Describe(in) }
-func (g *Counter) Collect(in chan<- prometheus.Metric) { g.p.Collect(in) }
+func (c *Counter) Describe(in chan<- *prometheus.Desc) { c.p.Describe(in) }
+func (c *Counter) Collect(in chan<- prometheus.Metric) { c.p.Collect(in) }
+func (c *Counter) Get() float64 {
+	out := io_prometheus_client.Metric{}
+	_ = c.p.Write(&out)
+	return out.Counter.GetValue()
+}
 
 func (s *Set) NewCounter(name string, helpChunks ...string) *Counter {
 	name = s.computeMetricName(name)
