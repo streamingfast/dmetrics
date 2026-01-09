@@ -121,17 +121,17 @@ type HeadBlockRelativeTime struct {
 }
 
 func (h *HeadBlockRelativeTime) SetLastBlock(blockTime time.Time) {
-	headBlockNumber.WithLabelValues(h.service).Set(time.Since(blockTime).Seconds())
+	headBlockRelativeTime.WithLabelValues(h.service).Observe(time.Since(blockTime).Seconds())
 }
 
 // Collect implements prometheus.Collector.
 func (h *HeadBlockRelativeTime) Collect(ch chan<- prometheus.Metric) {
-	headBlockNumber.Collect(ch)
+	headBlockRelativeTime.Collect(ch)
 }
 
 // Describe implements prometheus.Collector.
 func (h *HeadBlockRelativeTime) Describe(ch chan<- *prometheus.Desc) {
-	headBlockNumber.Describe(ch)
+	headBlockRelativeTime.Describe(ch)
 }
 
 func init() {
