@@ -245,6 +245,15 @@ func (s *Set) NewHistogram(name string, helpChunks ...string) *Histogram {
 	}).(*Histogram)
 }
 
+func (s *Set) NewHistogramCustomBuckets(name string, buckets []float64, helpChunks ...string) *Histogram {
+	name = s.computeMetricName(name)
+	h := prometheus.NewHistogram(prometheus.HistogramOpts{Name: name, Buckets: buckets, Help: generateMetricsHelp(name, helpChunks)})
+
+	return s.add(&Histogram{
+		p: h,
+	}).(*Histogram)
+}
+
 func (h *Histogram) ObserveDuration(value time.Duration) {
 	h.p.Observe(value.Seconds())
 }
@@ -280,6 +289,15 @@ type HistogramVec struct {
 func (s *Set) NewHistogramVec(name string, labels []string, helpChunks ...string) *HistogramVec {
 	name = s.computeMetricName(name)
 	h := prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: name, Help: generateMetricsHelp(name, helpChunks)}, labels)
+
+	return s.add(&HistogramVec{
+		p: h,
+	}).(*HistogramVec)
+}
+
+func (s *Set) NewHistogramVecCustomBuckets(name string, labels []string, buckets []float64, helpChunks ...string) *HistogramVec {
+	name = s.computeMetricName(name)
+	h := prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: name, Help: generateMetricsHelp(name, helpChunks), Buckets: buckets}, labels)
 
 	return s.add(&HistogramVec{
 		p: h,

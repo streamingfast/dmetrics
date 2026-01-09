@@ -30,6 +30,12 @@ var headBlockNumber = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 	Name: "head_block_number",
 }, []string{"app"})
 
+var headBlockRelativeTime = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	Name:    "head_block_relative_time",
+	Help:    "Number of seconds between real-time and block time, for each block",
+	Buckets: []float64{0.1, 0.3, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 10},
+}, []string{"app"})
+
 type HeadTimeDrift struct {
 	headBlockTimeCh chan time.Time
 	service         string
@@ -102,7 +108,34 @@ func (h *HeadBlockNum) Describe(ch chan<- *prometheus.Desc) {
 	headBlockNumber.Describe(ch)
 }
 
+func (s *Set) NewHeadBlockRelativeTime(service string) *HeadBlockRelativeTime {
+	return &HeadBlockRelativeTime{
+		service: service,
+	}
+}
+
+var _ prometheus.Collector = (*HeadBlockRelativeTime)(nil)
+
+type HeadBlockRelativeTime struct {
+	service string
+}
+
+func (h *HeadBlockRelativeTime) SetLastBlock(blockTime time.Time) {
+	headBlockNumber.WithLabelValues(h.service).Set(time.Since(blockTime).Seconds())
+}
+
+// Collect implements prometheus.Collector.
+func (h *HeadBlockRelativeTime) Collect(ch chan<- prometheus.Metric) {
+	headBlockNumber.Collect(ch)
+}
+
+// Describe implements prometheus.Collector.
+func (h *HeadBlockRelativeTime) Describe(ch chan<- *prometheus.Desc) {
+	headBlockNumber.Describe(ch)
+}
+
 func init() {
 	PrometheusRegister(headTimeDriftGauge)
 	PrometheusRegister(headBlockNumber)
+	PrometheusRegister(headBlockRelativeTime)
 }
