@@ -38,8 +38,11 @@ var headBlockRelativeTime = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 
 type HeadTimeDrift struct {
 	headBlockTimeCh chan time.Time
-	service         string
-	started         *atomic.Bool
+	// lastBlockTimeNanos is the block time last reported through SetBlockTimeForward,
+	// zero when only SetBlockTime was used.
+	lastBlockTimeNanos atomic.Int64
+	service            string
+	started            *atomic.Bool
 }
 
 func (s *Set) NewHeadTimeDrift(service string) *HeadTimeDrift {
@@ -70,6 +73,28 @@ func (h *HeadTimeDrift) SetBlockTime(blockTime time.Time) {
 		h.started.Store(true)
 	}
 	h.headBlockTimeCh <- blockTime
+}
+
+// SetBlockTimeForward is SetBlockTime, ignoring block times older than the one it
+// last reported. Use it when a single head time drift is fed from more than one
+// place, or from an asynchronous read, so the writes are not naturally ordered: the
+// gauge reports `time.Since(headBlockTime)` until it is written again, so a stale
+// block time landing last holds the drift high until the next write.
+//
+// Do not use it where the head can legitimately move backwards, such as a source
+// reprocessing an older range or restarting below its previous head.
+func (h *HeadTimeDrift) SetBlockTimeForward(blockTime time.Time) {
+	nanos := blockTime.UnixNano()
+	for {
+		last := h.lastBlockTimeNanos.Load()
+		if nanos <= last {
+			return
+		}
+		if h.lastBlockTimeNanos.CAS(last, nanos) {
+			h.SetBlockTime(blockTime)
+			return
+		}
+	}
 }
 
 // Collect implements prometheus.Collector.
